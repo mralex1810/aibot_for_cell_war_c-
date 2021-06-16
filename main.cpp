@@ -33,6 +33,7 @@ int distance(pair<int, int> pos1, pair<int, int> pos2)
            10;
 }
 struct Tentacle;
+
 struct Cell
 {
     string owner;
@@ -51,7 +52,7 @@ struct Cell
         counter = 0;
     }
 
-    void Cell::delete_tentacle(Tentacle *tentacle)
+    void delete_tentacle(Tentacle *tentacle)
     {
         for (int i = 0; i < tentacles.size(); i++)
         {
@@ -66,7 +67,6 @@ struct Cell
     void attack(string attacker, int damage);
     void update();
     bool add_tentacle(Tentacle *tentacle);
-    void delete_tentacle(Tentacle *tentacle);
 };
 
 struct Tentacle
@@ -75,24 +75,22 @@ struct Tentacle
     Cell *attacked;
     int len, id;
     bool need_attack;
-    Tentacle(Cell *attacker, Cell *attacked, int &TENTACLE_COUNTER)
+    vector<Tentacle> *tentacles;
+    vector<vector<bool>> *tentacles_ways;
+
+    Tentacle(Cell *attacker, Cell *attacked, int &TENTACLE_COUNTER, vector<vector<bool>> *tentacles_ways, vector<Tentacle> *tentacles)
     {
         this->attacker = attacker;
         this->attacked = attacked;
         id = TENTACLE_COUNTER++;
         len = distance(attacker->pos, attacked->pos);
+        this->tentacles = tentacles;
+        this->tentacles_ways = tentacles_ways;
         need_attack = false;
     }
-    void destroy()
-    {
-        attacker->attack(attacker->owner, len / 2);
-        attacked->attack(attacker->owner, len / 2);
-        attacker->delete_tentacle(this);
-    }
-    void destroy_in_attacked()
-    {
-        attacked->attack(attacker->owner, len);
-    }
+    void destroy();
+    void destroy_in_attacked();
+
     void update()
     {
         if (need_attack)
@@ -102,13 +100,26 @@ struct Tentacle
         }
     }
 };
+void delete_tentacle(int id, vector<Tentacle> *tentacles)
+{
+    for (auto it = tentacles->begin(); it != tentacles->end(); it++)
+    {
+        if (it->id == id)
+        {
+            tentacles->erase(it);
+        }
+    }
+}
+
 bool Cell::add_tentacle(Tentacle *tentacle)
 {
     if (tentacle->len <= score && tentacles.size() < lvl)
     {
         tentacles.push_back(tentacle);
         score -= tentacle->len;
+        return true;
     }
+    return false;
 }
 void Cell::update()
 {
@@ -117,7 +128,7 @@ void Cell::update()
         return;
     }
     counter += lvl + 1;
-    if (counter > 30)
+    if (counter >= 30)
     {
         counter = 0;
         if (score < 1000)
@@ -163,6 +174,22 @@ void Cell::attack(string attacker, int damage)
         owner = attacker;
         lvl = lvl_to_score(score);
     }
+}
+void Tentacle::destroy()
+{
+    attacker->attack(attacker->owner, len / 2);
+    attacked->attack(attacker->owner, len / 2);
+    attacker->delete_tentacle(this);
+    delete_tentacle(id, tentacles);
+    (*tentacles_ways)[attacker->id][attacked->id] = false;
+    delete this;
+}
+void Tentacle::destroy_in_attacked()
+{
+    attacked->attack(attacker->owner, len);
+    delete_tentacle(id, tentacles);
+    (*tentacles_ways)[attacker->id][attacked->id] = false;
+    delete this;
 }
 
 struct Chromosome
@@ -246,7 +273,10 @@ struct AI
                             battle += cell_action[i][j] * reasons_cell[i] * gens.get_gen(j);
                     }
                     if (battle > 0)
+                    {
                         ans.push_back(make_pair(cell_begin.id, cell_end.id));
+                        //cout << "attack\n";
+                    }
                 }
                 else
                 {
@@ -258,14 +288,17 @@ struct AI
                     {
                         for (int j = 0; j < GENES; j++)
                             destroy += tentacle_action[i][j] * reasons_tentacle[i] * gens.get_gen(j);
-                        if (destroy > 0)
+                        
+                    }
+                    if (destroy > 0)
                         {
                             ans.push_back(make_pair(cell_begin.id, cell_end.id));
+                            //cout << "destroy\n";
                         }
-                    }
                 }
             }
         }
+        return ans;
     }
 };
 
@@ -322,30 +355,99 @@ vector<Cell> start_cells = {
     Cell("gray", 1, make_pair(1800, 350), CELL_COUNTER),
     Cell("red", 2, make_pair(1800, 500), CELL_COUNTER),
     Cell("gray", 1, make_pair(1800, 650), CELL_COUNTER),
-    Cell("gray", 1, make_pair(1800, 850), CELL_COUNTER)
-
-};
-
+    Cell("gray", 1, make_pair(1800, 850), CELL_COUNTER)};
 
 void game(Chromosome &green_gens, Chromosome &red_gens, int green_i, int red_i, vector<pair<int, int>> &score)
 {
+    int start_time = time(nullptr);
     int TENTACLE_COUNTER = 0;
     vector<Cell> cells = start_cells;
+
     AI greenbot = AI("green", green_gens);
     AI redbot = AI("red", red_gens);
     vector<Tentacle> tentacles;
-    vector<vector<bool>> tentacles_ways(CELL_COUNTER, vector<bool>(CELL_COUNTER, -1));
+    vector<vector<bool>> tentacles_ways(CELL_COUNTER, vector<bool>(CELL_COUNTER, false));
     for (int tick = 0; tick < 5000; tick++)
     {
         vector<pair<int, int>> green_ans = greenbot.process(cells, tentacles_ways, tick);
-        
+        for (auto action : green_ans)
+        {
+            if (tentacles_ways[action.first][action.second])
+            {
+                for (auto tentacle : tentacles)
+                {
+                    if (tentacle.attacker->id == action.first and tentacle.attacked->id == action.second)
+                    {
+                        tentacle.destroy();
+                        tentacles_ways[action.first][action.second] = false;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+
+                Tentacle tentacle = Tentacle(&cells[action.first], &cells[action.second], TENTACLE_COUNTER, &tentacles_ways, &tentacles);
+                if (cells[action.first].add_tentacle(&tentacle))
+                {
+                    tentacles.push_back(tentacle);
+                    tentacles_ways[action.first][action.second] = 1;
+                    TENTACLE_COUNTER++;
+                }
+                TENTACLE_COUNTER--;
+
+            }
+        }
+        vector<pair<int, int>> red_ans = redbot.process(cells, tentacles_ways, tick);
+        for (auto action : red_ans)
+        {
+            if (tentacles_ways[action.first][action.second])
+            {
+                for (auto tentacle : tentacles)
+                {
+                    if (tentacle.attacker->id == action.first and tentacle.attacked->id == action.second)
+                    {
+                        tentacle.destroy();
+                        tentacles_ways[action.first][action.second] = false;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+
+                Tentacle tentacle = Tentacle(&cells[action.first], &cells[action.second], TENTACLE_COUNTER, &tentacles_ways, &tentacles);
+                if (cells[action.first].add_tentacle(&tentacle))
+                {
+                    tentacles.push_back(tentacle);
+                    tentacles_ways[action.first][action.second] = 1;
+                    TENTACLE_COUNTER++;
+                }
+                TENTACLE_COUNTER--;
+
+            }
+        }
+        for (auto cell : cells)
+            cell.update();
+        for (auto tentacle : tentacles)
+            tentacle.update();
     }
+    int green_score = 0;
+    int red_score = 0;
+    for (auto cell : cells)
+    {
+        if (cell.owner == "green")
+            green_score += 500 + cell.score;
+        else if (cell.owner == "red")
+            red_score += 500 + cell.score;
+    }
+    cout << green_score << ' ' << red_score << ' ' << time(nullptr) - start_time << endl;
 }
 
 int main()
 {
 
-    gen32.seed(time(nullptr));
+    gen32.seed(1343000);
     for (int i = 0; i < 10; i++)
     {
         for (int j = 0; j < 24; j++)
@@ -360,4 +462,8 @@ int main()
             tentacle_action[i][j] = (char)gen32();
         }
     }
+    Chromosome gen1 = Chromosome();
+    Chromosome gen2 = Chromosome();
+    vector<pair<int, int>> v;
+    game(gen1, gen2, 0, 0, v);
 }
