@@ -7,6 +7,8 @@
 #include <random>
 #include <ctime>
 #include <limits.h>
+#include <thread>
+#include <mutex>
 
 using namespace std;
 
@@ -17,6 +19,7 @@ const int CHANCE_MUTATION = 10;
 const int GEN_MUTATION = 40;
 const int CELLS_COUNT = 45;
 
+mutex score_lock;
 mt19937 gen32;
 vector<vector<char>> cell_action(10, vector<char>(64));
 vector<vector<char>> tentacle_action(10, vector<char>(64));
@@ -148,7 +151,7 @@ public:
         for (int i = 0; i < GENES; i++)
             chromosome.push_back((char)gens[i]);
     }
-    Chromosome born_heir()
+    Chromosome* born_heir()
     {
         vector<unsigned char> GENS;
         for (int i = 0; i < GENES; i++)
@@ -158,7 +161,7 @@ public:
                 GENS.push_back(chromosome[i] + gen32() % GEN_MUTATION - GEN_MUTATION / 2);
             }
         }
-        return Chromosome(GENS);
+        return new Chromosome(GENS);
     }
     int get_gen(int index)
     {
@@ -175,10 +178,10 @@ public:
 class AI
 {
 public:
-    Chromosome gens;
+    Chromosome* gens;
     string owner;
 
-    AI(string owner, Chromosome &gens)
+    AI(string owner, Chromosome *gens)
     {
         this->owner = owner;
         this->gens = gens;
@@ -214,7 +217,7 @@ public:
                     for (int i = 0; i < 10; i++)
                     {
                         for (int j = 0; j < GENES; j++)
-                            battle += cell_action[i][j] * reasons_cell[i] * gens.get_gen(j);
+                            battle += cell_action[i][j] * reasons_cell[i] * gens->get_gen(j);
                     }
                     if (battle > 0)
                     {
@@ -231,7 +234,7 @@ public:
                     for (int i = 0; i < 10; i++)
                     {
                         for (int j = 0; j < GENES; j++)
-                            destroy += tentacle_action[i][j] * reasons_tentacle[i] * gens.get_gen(j);
+                            destroy += tentacle_action[i][j] * reasons_tentacle[i] * gens->get_gen(j);
                     }
                     if (destroy > 0)
                     {
@@ -296,7 +299,7 @@ vector<Cell *> start_cells()
     return start_cells;
 }
 
-void game(Chromosome &green_gens, Chromosome &red_gens, int green_i, int red_i, vector<pair<int, int>> &score)
+void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, vector<pair<int, int>> &score)
 {
     int start_time = time(nullptr);
     int TENTACLE_COUNTER = 0;
@@ -360,15 +363,20 @@ void game(Chromosome &green_gens, Chromosome &red_gens, int green_i, int red_i, 
         if (cell->owner == "green")
         {
             green_score += 500 + cell->score;
-            cout << cell->score << endl;
+            //cout << cell->score << endl;
         }
         else if (cell->owner == "red")
         {
             red_score += 500 + cell->score;
-            cout << cell->score << endl;
+            //cout << cell->score << endl;
         }
     }
     cout << green_score << ' ' << red_score << ' ' << time(nullptr) - start_time << endl;
+    score_lock.lock();
+    score[green_i].first += green_score - red_score / 2;
+    score[red_i].first += red_score - green_score / 2;
+    score_lock.unlock();
+
 }
 
 int main()
@@ -377,20 +385,73 @@ int main()
     gen32.seed(time(nullptr));
     for (int i = 0; i < 10; i++)
     {
-        for (int j = 0; j < 24; j++)
+        for (int j = 0; j < GENES; j++)
         {
             cell_action[i][j] = (char)gen32();
         }
     }
     for (int i = 0; i < 10; i++)
     {
-        for (int j = 0; j < 24; j++)
+        for (int j = 0; j < GENES; j++)
         {
             tentacle_action[i][j] = (char)gen32();
         }
     }
-    Chromosome gen1 = Chromosome();
-    Chromosome gen2 = Chromosome();
-    vector<pair<int, int>> v;
-    game(gen1, gen2, 0, 0, v);
+    vector <pair <int, int>> score(POPULATION, make_pair(0, 0));
+    for (int i = 0; i < POPULATION; i++) score[i].second = i;
+    vector <Chromosome*> gens;
+    for (int i = 0; i < POPULATION; i++) gens.push_back(new Chromosome());
+    for (int generation = 0; generation < GENERATIONS; generation++){
+        vector <pair <int, int>> games;
+        for (int i = 0; i < POPULATION - 1; i++){
+            for (int j = 0; j < POPULATION; j++)
+                games.push_back(make_pair(i, j));
+        }
+        for (int i = 0; i < games.size(); ){
+            if (games.size() - i >= 4){
+                thread thr1(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+                thread thr2(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+                thread thr3(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+                thread thr4(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+                thr1.join();
+                thr2.join();
+                thr3.join();
+                thr4.join();
+            }
+            else if (games.size() - i == 3){
+                thread thr1(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+                thread thr2(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+                thread thr3(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+                thr1.join();
+                thr2.join();
+                thr3.join();
+            }
+            else if (games.size() - i == 2){
+                thread thr1(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+                thread thr2(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+                thr1.join();
+                thr2.join();
+            } else if (games.size() - i == 1){
+                game(gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
+                i++;
+            }
+
+        }
+        sort(score.begin(), score.end());
+        for (auto c : score) cout << c.first << ' ' << c.second << " ||| ";
+        for (int i = POPULATION - POPULATION / 3; i < POPULATION; i++){
+            gens[score[i].second] = gens[score[POPULATION - i - 1].second]->born_heir();
+        }
+        for (auto c : gens) c->print();
+    }
+
 }
