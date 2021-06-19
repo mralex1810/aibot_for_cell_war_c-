@@ -19,10 +19,10 @@ const int CHANCE_MUTATION = 10;
 const int GEN_MUTATION = 40;
 const int CELLS_COUNT = 45;
 
-mutex score_lock;
+//mutex score_lock;
 mt19937 gen32;
-vector<vector<char>> cell_action(10, vector<char>(64));
-vector<vector<char>> tentacle_action(10, vector<char>(64));
+vector<vector<char>> cell_action(10, vector<char>(GENES));
+vector<vector<char>> tentacle_action(10, vector<char>(GENES));
 const vector<int> lvlscore = {0, 10, 25, 100, 250, 500, 990};
 
 int lvl_to_score(int score)
@@ -45,7 +45,7 @@ public:
     int id;
     int counter;
     pair<int, int> pos;
-    vector<Cell *> cells;
+    vector<Cell*> cells;
 
     Cell(string owner, int lvl, pair<int, int> pos, int &CELL_COUNTER)
     {
@@ -58,7 +58,7 @@ public:
         id = CELL_COUNTER++;
     }
 
-    void attack(string attacker, int damage)
+    void attack(string attacker, int damage, vector <pair <pair <int, int>, int>> &attack_next)
     {
         if (owner == attacker)
         {
@@ -82,7 +82,7 @@ public:
         {
             for (auto cell : cells)
             {
-                cell->attack(owner, distance(pos, cell->pos));
+                attack_next.push_back(make_pair(make_pair(id, cell->id), distance(pos, cell->pos)));
             }
             cells.clear();
             if (owner == "gray")
@@ -93,7 +93,7 @@ public:
             lvl = lvl_to_score(score);
         }
     }
-    void update()
+    void update(vector <pair <pair <int, int>, int>> &attack_next)
     {
         if (owner == "gray")
         {
@@ -116,7 +116,7 @@ public:
             lvl = lvl_to_score(score);
             for (auto cell : cells)
             {
-                cell->attack(owner, 1);
+                attack_next.push_back(make_pair(make_pair(id, cell->id), 1));
             }
         }
     }
@@ -312,49 +312,64 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
     AI greenbot = AI("green", green_gens);
     AI redbot = AI("red", red_gens);
 
+    vector <pair <pair<int, int>, int>> attack;
+    vector <pair <pair<int, int>, int>> attack_next;
+    
+
     vector<vector<bool>> tentacles_ways(CELLS_COUNT, vector<bool>(CELLS_COUNT, false));
     for (int tick = 0; tick < 5000; tick++)
     {
-        vector<pair<int, int>> green_ans = greenbot.process(cells, tentacles_ways, tick);
-        for (auto action : green_ans)
-        {
-            if (tentacles_ways[action.first][action.second])
+        if (tick % 10 < 2){
+            vector<pair<int, int>> green_ans = greenbot.process(cells, tentacles_ways, tick);
+            for (auto action : green_ans)
             {
-                tentacles_ways[action.first][action.second] = 0;
-                cells[action.first]->delete_tentacle(cells[action.second]);
-
-            }
-            else
-            {
-
-                if (cells[action.first]->add_tentacle(cells[action.second]))
+                if (tentacles_ways[action.first][action.second])
                 {
-                    tentacles_ways[action.first][action.second] = 1;
+                    attack_next.push_back(make_pair(make_pair(action.first, action.second), distance(cells[action.first]->pos, cells[action.second]->pos) / 2));
+                    attack_next.push_back(make_pair(make_pair(action.first, action.first), distance(cells[action.first]->pos, cells[action.second]->pos) / 2));
+                    tentacles_ways[action.first][action.second] = 0;
+                    cells[action.first]->delete_tentacle(cells[action.second]);
 
                 }
-            }
-        }
-        vector<pair<int, int>> red_ans = redbot.process(cells, tentacles_ways, tick);
-        for (auto action : red_ans)
-        {
-            if (tentacles_ways[action.first][action.second])
-            {
-                tentacles_ways[action.first][action.second] = 0;
-                cells[action.first]->delete_tentacle(cells[action.second]);
-
-            }
-            else
-            {
-
-                if (cells[action.first]->add_tentacle(cells[action.second]))
+                else
                 {
-                    tentacles_ways[action.first][action.second] = 1;
 
+                    if (cells[action.first]->add_tentacle(cells[action.second]))
+                    {
+                        tentacles_ways[action.first][action.second] = 1;
+                    }
+                }
+            }
+            vector<pair<int, int>> red_ans = redbot.process(cells, tentacles_ways, tick);
+            for (auto action : red_ans)
+            {
+                if (tentacles_ways[action.first][action.second])
+                {
+                    attack_next.push_back(make_pair(make_pair(action.first, action.second), distance(cells[action.first]->pos, cells[action.second]->pos) / 2));
+                    attack_next.push_back(make_pair(make_pair(action.first, action.first), distance(cells[action.first]->pos, cells[action.second]->pos) / 2));
+                    tentacles_ways[action.first][action.second] = 0;
+                    cells[action.first]->delete_tentacle(cells[action.second]);
+
+                }
+                else
+                {
+
+                    if (cells[action.first]->add_tentacle(cells[action.second]))
+                    {
+                        tentacles_ways[action.first][action.second] = 1;
+                    }
                 }
             }
         }
         for (auto cell : cells)
-            cell->update();
+            cell->update(attack_next);
+        attack = attack_next;
+        attack_next.clear();
+        for (auto action : attack){
+            cells[action.first.second]->attack(cells[action.first.first]->owner, action.second, attack_next);
+        }
+        attack.clear();
+
     }
     int green_score = 0;
     int red_score = 0;
@@ -371,11 +386,11 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
             //cout << cell->score << endl;
         }
     }
-    cout << green_score << ' ' << red_score << ' ' << time(nullptr) - start_time << endl;
-    score_lock.lock();
+    cout << green_score << ' ' << red_score << ' ' << time(nullptr) - start_time << ' ' << green_i << ' ' << red_i << endl;
+    //score_lock.lock();
     score[green_i].first += green_score - red_score / 2;
     score[red_i].first += red_score - green_score / 2;
-    score_lock.unlock();
+    //score_lock.unlock();
 
 }
 
@@ -402,49 +417,9 @@ int main()
     vector <Chromosome*> gens;
     for (int i = 0; i < POPULATION; i++) gens.push_back(new Chromosome());
     for (int generation = 0; generation < GENERATIONS; generation++){
-        vector <pair <int, int>> games;
         for (int i = 0; i < POPULATION - 1; i++){
-            for (int j = 0; j < POPULATION; j++)
-                games.push_back(make_pair(i, j));
-        }
-        for (int i = 0; i < games.size(); ){
-            if (games.size() - i >= 4){
-                thread thr1(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-                thread thr2(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-                thread thr3(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-                thread thr4(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-                thr1.join();
-                thr2.join();
-                thr3.join();
-                thr4.join();
-            }
-            else if (games.size() - i == 3){
-                thread thr1(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-                thread thr2(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-                thread thr3(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-                thr1.join();
-                thr2.join();
-                thr3.join();
-            }
-            else if (games.size() - i == 2){
-                thread thr1(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-                thread thr2(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-                thr1.join();
-                thr2.join();
-            } else if (games.size() - i == 1){
-                game(gens[games[i].first], gens[games[i].second], games[i].first, games[i].second, score);
-                i++;
-            }
-
+            for (int j = i + 1; j < POPULATION; j++)
+                game(gens[i], gens[j], i, j, score);
         }
         sort(score.begin(), score.end());
         for (auto c : score) cout << c.first << ' ' << c.second << " ||| ";
