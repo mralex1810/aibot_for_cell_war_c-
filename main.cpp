@@ -9,6 +9,7 @@
 #include <limits.h>
 #include <thread>
 #include <mutex>
+#include <exception>
 
 using namespace std;
 
@@ -29,6 +30,7 @@ int lvl_to_score(int score)
 {
     return upper_bound(lvlscore.begin(), lvlscore.end(), score) - lvlscore.begin() - 1;
 }
+
 int distance(pair<int, int> pos1, pair<int, int> pos2)
 {
     return ((int)sqrt((pos1.first - pos2.first) * (pos1.first - pos2.first) +
@@ -45,7 +47,7 @@ public:
     int id;
     int counter;
     pair<int, int> pos;
-    vector<Cell*> cells;
+    vector<Cell *> cells;
 
     Cell(string owner, int lvl, pair<int, int> pos, int &CELL_COUNTER)
     {
@@ -58,7 +60,7 @@ public:
         id = CELL_COUNTER++;
     }
 
-    void attack(string attacker, int damage, vector <pair <pair <int, int>, int>> &attack_next)
+    void attack(string attacker, int damage, vector<pair<pair<int, int>, int>> &attack_next)
     {
         if (owner == attacker)
         {
@@ -93,7 +95,7 @@ public:
             lvl = lvl_to_score(score);
         }
     }
-    void update(vector <pair <pair <int, int>, int>> &attack_next)
+    void update(vector<pair<pair<int, int>, int>> &attack_next)
     {
         if (owner == "gray")
         {
@@ -125,7 +127,7 @@ public:
         if (distance(pos, cell_end->pos) <= score && cells.size() < lvl)
         {
             cells.push_back(cell_end);
-            score -= distance(pos, cell_end->pos) ;
+            score -= distance(pos, cell_end->pos);
             return true;
         }
         return false;
@@ -133,7 +135,14 @@ public:
 
     void delete_tentacle(Cell *cell_end)
     {
-        cells.erase(find(cells.begin(), cells.end(), cell_end));
+        for (int i = 0; i < cells.size(); i++)
+        {
+            if (cells[i] == cell_end)
+            {
+                swap(cells[i], cells[cells.size() - 1]);
+                cells.pop_back();
+            }
+        }
     }
 };
 
@@ -151,7 +160,7 @@ public:
         for (int i = 0; i < GENES; i++)
             chromosome.push_back((char)gens[i]);
     }
-    Chromosome* born_heir()
+    Chromosome *born_heir()
     {
         vector<unsigned char> GENS;
         for (int i = 0; i < GENES; i++)
@@ -169,16 +178,18 @@ public:
     }
     void print()
     {
-        for (int i = 0; i < GENES; i++)
-            cout << chromosome[i] << ' ';
-        cout << '\n';
+        cout << "[";
+        for (int i = 0; i < GENES - 1; i++)
+            cout << (int)chromosome[i] << ", ";
+        cout << (int)chromosome[GENES - 1];
+        cout << "]\n";
     }
 };
 
 class AI
 {
 public:
-    Chromosome* gens;
+    Chromosome *gens;
     string owner;
 
     AI(string owner, Chromosome *gens)
@@ -247,6 +258,7 @@ public:
         return ans;
     }
 };
+
 vector<Cell *> start_cells()
 {
     vector<Cell *> start_cells;
@@ -303,7 +315,7 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
 {
     int start_time = time(nullptr);
     int TENTACLE_COUNTER = 0;
-    vector<Cell*> cells;
+    vector<Cell *> cells;
     for (auto cell : start_cells())
     {
         cells.push_back(cell);
@@ -312,14 +324,14 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
     AI greenbot = AI("green", green_gens);
     AI redbot = AI("red", red_gens);
 
-    vector <pair <pair<int, int>, int>> attack;
-    vector <pair <pair<int, int>, int>> attack_next;
-    
+    vector<pair<pair<int, int>, int>> attack;
+    vector<pair<pair<int, int>, int>> attack_next;
 
     vector<vector<bool>> tentacles_ways(CELLS_COUNT, vector<bool>(CELLS_COUNT, false));
     for (int tick = 0; tick < 5000; tick++)
     {
-        if (tick % 10 < 2){
+        if (tick % 10 < 2)
+        {
             vector<pair<int, int>> green_ans = greenbot.process(cells, tentacles_ways, tick);
             for (auto action : green_ans)
             {
@@ -329,7 +341,6 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
                     attack_next.push_back(make_pair(make_pair(action.first, action.first), distance(cells[action.first]->pos, cells[action.second]->pos) / 2));
                     tentacles_ways[action.first][action.second] = 0;
                     cells[action.first]->delete_tentacle(cells[action.second]);
-
                 }
                 else
                 {
@@ -349,7 +360,6 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
                     attack_next.push_back(make_pair(make_pair(action.first, action.first), distance(cells[action.first]->pos, cells[action.second]->pos) / 2));
                     tentacles_ways[action.first][action.second] = 0;
                     cells[action.first]->delete_tentacle(cells[action.second]);
-
                 }
                 else
                 {
@@ -365,11 +375,11 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
             cell->update(attack_next);
         attack = attack_next;
         attack_next.clear();
-        for (auto action : attack){
+        for (auto action : attack)
+        {
             cells[action.first.second]->attack(cells[action.first.first]->owner, action.second, attack_next);
         }
         attack.clear();
-
     }
     int green_score = 0;
     int red_score = 0;
@@ -391,12 +401,29 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
     score[green_i].first += green_score - red_score / 2;
     score[red_i].first += red_score - green_score / 2;
     //score_lock.unlock();
+}
 
+void print(vector<vector<char>> &a)
+{
+    cout << "[[";
+    for (int i = 0; i < a.size() - 1; i++)
+    {
+        for (int j = 0; j < a[i].size() - 1; j++)
+            cout << (int)a[i][j] << ", ";
+        cout << (int)a[i][a[i].size() - 1];
+        cout << "], [";
+    }
+    int i = a.size() - 1;
+    for (int j = 0; j < a[i].size() - 1; j++)
+        cout << (int)a[i][j] << ", ";
+    cout << (int)a[i][a[i].size() - 1];
+    cout << "]]\n";
 }
 
 int main()
 {
 
+    freopen("gen.txt", "w", stdout);
     gen32.seed(time(nullptr));
     for (int i = 0; i < 10; i++)
     {
@@ -412,21 +439,30 @@ int main()
             tentacle_action[i][j] = (char)gen32();
         }
     }
-    vector <pair <int, int>> score(POPULATION, make_pair(0, 0));
-    for (int i = 0; i < POPULATION; i++) score[i].second = i;
-    vector <Chromosome*> gens;
-    for (int i = 0; i < POPULATION; i++) gens.push_back(new Chromosome());
-    for (int generation = 0; generation < GENERATIONS; generation++){
-        for (int i = 0; i < POPULATION - 1; i++){
+    print(cell_action);
+    print(tentacle_action);
+    vector<pair<int, int>> score(POPULATION, make_pair(0, 0));
+    for (int i = 0; i < POPULATION; i++)
+        score[i].second = i;
+    vector<Chromosome *> gens;
+    for (int i = 0; i < POPULATION; i++)
+        gens.push_back(new Chromosome());
+    for (int generation = 0; generation < GENERATIONS; generation++)
+    {
+        for (int i = 0; i < POPULATION - 1; i++)
+        {
             for (int j = i + 1; j < POPULATION; j++)
                 game(gens[i], gens[j], i, j, score);
         }
         sort(score.begin(), score.end());
-        for (auto c : score) cout << c.first << ' ' << c.second << " ||| ";
-        for (int i = POPULATION - POPULATION / 3; i < POPULATION; i++){
+        for (auto c : score)
+            cout << c.first << ' ' << c.second << " ||| ";
+        cout << endl;
+        for (int i = POPULATION - POPULATION / 3; i < POPULATION; i++)
+        {
             gens[score[i].second] = gens[score[POPULATION - i - 1].second]->born_heir();
         }
-        for (auto c : gens) c->print();
+        for (auto c : gens)
+            c->print();
     }
-
 }
