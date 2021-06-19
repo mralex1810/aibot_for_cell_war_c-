@@ -12,7 +12,7 @@
 
 using namespace std;
 
-const int POPULATION = 15;
+const int POPULATION = 18;
 const int GENERATIONS = 100;
 const int GENES = 64;
 const int CHANCE_MUTATION = 20;
@@ -217,7 +217,7 @@ public:
                 {
                     vector<int> signs_cell = {way / 20, 15000 / way, 100 * is_enemy, 100 * is_gray, 100 * is_friend,
                                               cell_end->score / 10, cell_begin->score / 10, (cell_end->score - cell_begin->score) / 10,
-                                              tick / 50, cell_end->lvl * 100 / 7};
+                                              tick / 50, (cell_begin->lvl - (int)cell_begin->cells.size()) * 100 / 7};
                     int battle = 0;
                     for (int i = 0; i < SIGNS_CELL; i++)
                     {
@@ -234,7 +234,7 @@ public:
                 {
                     vector<int> signs_tentacle = {way / 20, 15000 / way, 100 * is_enemy, 100 * is_gray, 100 * is_friend,
                                                   cell_end->score / 10, cell_begin->score / 10, (cell_end->score - way / 2) / 8,
-                                                  tick / 50, cell_end->lvl * 100 / 7};
+                                                  tick / 50, (cell_begin->lvl - (int)cell_begin->cells.size()) * 100 / 7};
                     int destroy = 0;
                     for (int i = 0; i < SIGNS_TENTACLE; i++)
                     {
