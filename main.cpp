@@ -9,16 +9,17 @@
 #include <limits.h>
 #include <thread>
 #include <mutex>
-#include <exception>
 
 using namespace std;
 
-const int POPULATION = 12;
-const int GENERATIONS = 30;
+const int POPULATION = 15;
+const int GENERATIONS = 100;
 const int GENES = 64;
-const int CHANCE_MUTATION = 10;
-const int GEN_MUTATION = 40;
+const int CHANCE_MUTATION = 20;
+const int GEN_MUTATION = 60;
 const int CELLS_COUNT = 45;
+const int SIGNS_CELL = 10;
+const int SIGNS_TENTACLE = 10;
 
 //mutex score_lock;
 mt19937 gen32;
@@ -153,24 +154,17 @@ public:
     Chromosome()
     {
         for (int i = 0; i < GENES; i++)
-            chromosome.push_back((char)gen32());
+            chromosome.push_back((char)(gen32() % 255 - 128));
     }
-    Chromosome(vector<unsigned char> &gens)
+    Chromosome(Chromosome *parent)
     {
-        for (int i = 0; i < GENES; i++)
-            chromosome.push_back((char)gens[i]);
-    }
-    Chromosome *born_heir()
-    {
-        vector<unsigned char> GENS;
         for (int i = 0; i < GENES; i++)
         {
-            if (gen32() % 100 <= CHANCE_MUTATION)
-            {
-                GENS.push_back(chromosome[i] + gen32() % GEN_MUTATION - GEN_MUTATION / 2);
-            }
+            if (gen32() % 100 < CHANCE_MUTATION)
+                chromosome.push_back((char)(parent->get_gen(i) + (gen32() % GEN_MUTATION) - GEN_MUTATION / 2));
+            else
+                chromosome.push_back(parent->get_gen(i));
         }
-        return new Chromosome(GENS);
     }
     int get_gen(int index)
     {
@@ -221,14 +215,14 @@ public:
                 int way = distance(cell_begin->pos, cell_end->pos);
                 if (!tentacles_ways[cell_begin->id][cell_end->id])
                 {
-                    vector<int> reasons_cell = {way / 20, 15000 / way, 100 * is_enemy, 100 * is_gray, 100 * is_friend,
-                                                cell_end->score / 10, cell_begin->score / 10, (cell_end->score - cell_begin->score) / 10,
-                                                tick / 50, cell_end->lvl * 100 / 7};
+                    vector<int> signs_cell = {way / 20, 15000 / way, 100 * is_enemy, 100 * is_gray, 100 * is_friend,
+                                              cell_end->score / 10, cell_begin->score / 10, (cell_end->score - cell_begin->score) / 10,
+                                              tick / 50, cell_end->lvl * 100 / 7};
                     int battle = 0;
-                    for (int i = 0; i < 10; i++)
+                    for (int i = 0; i < SIGNS_CELL; i++)
                     {
                         for (int j = 0; j < GENES; j++)
-                            battle += cell_action[i][j] * reasons_cell[i] * gens->get_gen(j);
+                            battle += cell_action[i][j] * signs_cell[i] * gens->get_gen(j);
                     }
                     if (battle > 0)
                     {
@@ -238,14 +232,14 @@ public:
                 }
                 else
                 {
-                    vector<int> reasons_tentacle = {way / 20, 15000 / way, 100 * is_enemy, 100 * is_gray, 100 * is_friend,
-                                                    cell_end->score / 10, cell_begin->score / 10, (cell_end->score - way / 2) / 8,
-                                                    tick / 50, cell_end->lvl * 100 / 7};
+                    vector<int> signs_tentacle = {way / 20, 15000 / way, 100 * is_enemy, 100 * is_gray, 100 * is_friend,
+                                                  cell_end->score / 10, cell_begin->score / 10, (cell_end->score - way / 2) / 8,
+                                                  tick / 50, cell_end->lvl * 100 / 7};
                     int destroy = 0;
-                    for (int i = 0; i < 10; i++)
+                    for (int i = 0; i < SIGNS_TENTACLE; i++)
                     {
                         for (int j = 0; j < GENES; j++)
-                            destroy += tentacle_action[i][j] * reasons_tentacle[i] * gens->get_gen(j);
+                            destroy += tentacle_action[i][j] * signs_tentacle[i] * gens->get_gen(j);
                     }
                     if (destroy > 0)
                     {
@@ -259,70 +253,61 @@ public:
     }
 };
 
-vector<Cell *> start_cells()
-{
-    vector<Cell *> start_cells;
-    int CELL_COUNTER = 0;
-    start_cells.push_back(new Cell("gray", 1, make_pair(100, 150), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 1, make_pair(100, 350), CELL_COUNTER));
-    start_cells.push_back(new Cell("green", 2, make_pair(100, 500), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 1, make_pair(100, 650), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 1, make_pair(100, 850), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(300, 100), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 2, make_pair(300, 300), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 2, make_pair(300, 500), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 2, make_pair(300, 700), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(300, 900), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(500, 150), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(500, 350), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(500, 500), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(500, 650), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(500, 850), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 5, make_pair(700, 100), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(700, 300), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(700, 500), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(700, 700), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 5, make_pair(700, 900), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 6, make_pair(950, 50), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 5, make_pair(950, 250), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(950, 500), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(950, 750), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(950, 950), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 5, make_pair(1200, 100), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(1200, 300), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(1200, 500), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(1200, 700), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 5, make_pair(1200, 900), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(1400, 150), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(1400, 350), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(1400, 500), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(1400, 650), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 4, make_pair(1400, 850), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(1600, 100), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 2, make_pair(1600, 300), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 2, make_pair(1600, 500), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 2, make_pair(1600, 700), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 3, make_pair(1600, 900), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 1, make_pair(1800, 150), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 1, make_pair(1800, 350), CELL_COUNTER));
-    start_cells.push_back(new Cell("red", 2, make_pair(1800, 500), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 1, make_pair(1800, 650), CELL_COUNTER));
-    start_cells.push_back(new Cell("gray", 1, make_pair(1800, 850), CELL_COUNTER));
-    return start_cells;
-}
 
 void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, vector<pair<int, int>> &score)
 {
     int start_time = time(nullptr);
-    int TENTACLE_COUNTER = 0;
+    int CELL_COUNTER = 0;
     vector<Cell *> cells;
-    for (auto cell : start_cells())
-    {
-        cells.push_back(cell);
-    }
 
-    AI greenbot = AI("green", green_gens);
-    AI redbot = AI("red", red_gens);
+    cells.push_back(new Cell("gray", 1, make_pair(100, 150), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 1, make_pair(100, 350), CELL_COUNTER));
+    cells.push_back(new Cell("green", 2, make_pair(100, 500), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 1, make_pair(100, 650), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 1, make_pair(100, 850), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(300, 100), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 2, make_pair(300, 300), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 2, make_pair(300, 500), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 2, make_pair(300, 700), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(300, 900), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(500, 150), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(500, 350), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(500, 500), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(500, 650), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(500, 850), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 5, make_pair(700, 100), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(700, 300), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(700, 500), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(700, 700), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 5, make_pair(700, 900), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 6, make_pair(950, 50), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 5, make_pair(950, 250), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(950, 500), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(950, 750), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(950, 950), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 5, make_pair(1200, 100), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(1200, 300), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(1200, 500), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(1200, 700), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 5, make_pair(1200, 900), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(1400, 150), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(1400, 350), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(1400, 500), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(1400, 650), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 4, make_pair(1400, 850), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(1600, 100), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 2, make_pair(1600, 300), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 2, make_pair(1600, 500), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 2, make_pair(1600, 700), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 3, make_pair(1600, 900), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 1, make_pair(1800, 150), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 1, make_pair(1800, 350), CELL_COUNTER));
+    cells.push_back(new Cell("red", 2, make_pair(1800, 500), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 1, make_pair(1800, 650), CELL_COUNTER));
+    cells.push_back(new Cell("gray", 1, make_pair(1800, 850), CELL_COUNTER));
+    
+    AI *greenbot = new AI("green", green_gens);
+    AI *redbot = new AI("red", red_gens);
 
     vector<pair<pair<int, int>, int>> attack;
     vector<pair<pair<int, int>, int>> attack_next;
@@ -332,7 +317,7 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
     {
         if (tick % 10 < 2)
         {
-            vector<pair<int, int>> green_ans = greenbot.process(cells, tentacles_ways, tick);
+            vector<pair<int, int>> green_ans = greenbot->process(cells, tentacles_ways, tick);
             for (auto action : green_ans)
             {
                 if (tentacles_ways[action.first][action.second])
@@ -351,7 +336,7 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
                     }
                 }
             }
-            vector<pair<int, int>> red_ans = redbot.process(cells, tentacles_ways, tick);
+            vector<pair<int, int>> red_ans = redbot->process(cells, tentacles_ways, tick);
             for (auto action : red_ans)
             {
                 if (tentacles_ways[action.first][action.second])
@@ -423,46 +408,50 @@ void print(vector<vector<char>> &a)
 int main()
 {
 
-    freopen("gen.txt", "w", stdout);
+    freopen("D:/gen.txt", "w", stdout);
     gen32.seed(time(nullptr));
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < SIGNS_CELL; i++)
     {
         for (int j = 0; j < GENES; j++)
         {
-            cell_action[i][j] = (char)gen32();
+            cell_action[i][j] = (char)(gen32() % 255 - 128);
         }
     }
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < SIGNS_TENTACLE; i++)
     {
         for (int j = 0; j < GENES; j++)
         {
-            tentacle_action[i][j] = (char)gen32();
+            tentacle_action[i][j] = (char)(gen32() % 255 - 128);
         }
     }
     print(cell_action);
     print(tentacle_action);
-    vector<pair<int, int>> score(POPULATION, make_pair(0, 0));
-    for (int i = 0; i < POPULATION; i++)
-        score[i].second = i;
     vector<Chromosome *> gens;
     for (int i = 0; i < POPULATION; i++)
         gens.push_back(new Chromosome());
     for (int generation = 0; generation < GENERATIONS; generation++)
     {
+        cout << generation << endl;
+        vector<pair<int, int>> score(POPULATION, make_pair(0, 0));
+        for (int i = 0; i < POPULATION; i++)
+            score[i].second = i;
         for (int i = 0; i < POPULATION - 1; i++)
         {
             for (int j = i + 1; j < POPULATION; j++)
                 game(gens[i], gens[j], i, j, score);
         }
         sort(score.begin(), score.end());
+        reverse(score.begin(), score.end());
         for (auto c : score)
             cout << c.first << ' ' << c.second << " ||| ";
         cout << endl;
-        for (int i = POPULATION - POPULATION / 3; i < POPULATION; i++)
-        {
-            gens[score[i].second] = gens[score[POPULATION - i - 1].second]->born_heir();
-        }
         for (auto c : gens)
             c->print();
+        for (int i = POPULATION - POPULATION / 3; i < POPULATION; i++)
+        {
+            delete gens[score[i].second];
+            gens[score[i].second] = new Chromosome(gens[score[POPULATION - i - 1].second]);
+        }
+        cout << endl;
     }
 }
