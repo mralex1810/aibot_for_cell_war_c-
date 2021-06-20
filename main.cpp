@@ -12,7 +12,7 @@
 
 using namespace std;
 
-const int POPULATION = 15;
+const int POPULATION = 21;
 const int GENERATIONS = 100;
 const int GENES = 64;
 const int CHANCE_MUTATION = 20;
@@ -37,6 +37,18 @@ int distance(pair<int, int> pos1, pair<int, int> pos2)
     return ((int)sqrt((pos1.first - pos2.first) * (pos1.first - pos2.first) +
                       (pos1.second - pos2.second) * (pos1.second - pos2.second))) /
            10;
+}
+
+void permutate(vector<pair<int, int>> &a)
+{
+    for (int i = 0; i < a.size(); i++)
+        swap(a[gen32() % a.size()], a[gen32() % a.size()]);
+}
+
+void permutate(vector<pair<pair<int, int>, int>> &a)
+{
+    for (int i = 0; i < a.size(); i++)
+        swap(a[gen32() % a.size()], a[gen32() % a.size()]);
 }
 
 class Cell
@@ -167,10 +179,12 @@ public:
         }
     }
 
-    void mutate(){
+    void mutate()
+    {
         for (int i = 0; i < GENES; i++)
         {
-            if (gen32() % 100 < CHANCE_MUTATION){
+            if (gen32() % 100 < CHANCE_MUTATION)
+            {
                 chromosome[i] += (gen32() % GEN_MUTATION) - GEN_MUTATION / 2;
             }
         }
@@ -225,14 +239,15 @@ public:
                 int way = distance(cell_begin->pos, cell_end->pos);
                 if (!tentacles_ways[cell_begin->id][cell_end->id])
                 {
-                    if (way > cell_begin->score) continue;
+                    if (way > cell_begin->score)
+                        continue;
                     vector<int> signs_cell = {way / 20, 15000 / way, 100 * is_enemy, 100 * is_gray, 100 * is_friend,
                                               cell_end->score / 10, cell_begin->score / 10, (cell_end->score - cell_begin->score) / 10,
                                               tick / 50, (cell_begin->lvl - (int)cell_begin->cells.size()) * 100 / 7};
                     int battle = 0;
                     for (int i = 0; i < SIGNS_CELL; i++)
                     {
-                        for (int j = 0; j < GENES; j++)
+                        for (int j = 0; j < GENES / 2; j++)
                             battle += cell_action[i][j] * signs_cell[i] * gens->get_gen(j);
                     }
                     if (battle > 0)
@@ -249,7 +264,7 @@ public:
                     int destroy = 0;
                     for (int i = 0; i < SIGNS_TENTACLE; i++)
                     {
-                        for (int j = 0; j < GENES; j++)
+                        for (int j = GENES / 2; j < GENES; j++)
                             destroy += tentacle_action[i][j] * signs_tentacle[i] * gens->get_gen(j);
                     }
                     if (destroy > 0)
@@ -264,7 +279,33 @@ public:
     }
 };
 
-void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, vector <pair <int, int>> *score)
+void print(int a, int b, int c, int d, int e)
+{
+    string sa = to_string(a), sb = to_string(b), sc = to_string(c), sd = to_string(d), se = to_string(e);
+    string tmp;
+    for (int i = 0; i < 5 - sa.size(); i++)
+        tmp += ' ';
+    sa += tmp;
+    tmp = "";
+    for (int i = 0; i < 5 - sb.size(); i++)
+        tmp += ' ';
+    sb += tmp;
+    tmp = "";
+    for (int i = 0; i < 5 - sc.size(); i++)
+        tmp += ' ';
+    sc += tmp;
+    tmp = "";
+    for (int i = 0; i < 5 - sd.size(); i++)
+        tmp += ' ';
+    sd += tmp;
+    tmp = "";
+    for (int i = 0; i < 5 - se.size(); i++)
+        tmp += ' ';
+    se += tmp;
+    cout << sa << ' ' << sb << ' ' << sc << ' ' << sd << ' ' << se << '\n';
+}
+
+void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, vector<pair<int, int>> *score)
 {
     int start_time = time(nullptr);
     int CELL_COUNTER = 0;
@@ -315,7 +356,7 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
     cells.push_back(new Cell("red", 2, make_pair(1800, 500), CELL_COUNTER));
     cells.push_back(new Cell("gray", 1, make_pair(1800, 650), CELL_COUNTER));
     cells.push_back(new Cell("gray", 1, make_pair(1800, 850), CELL_COUNTER));
-    
+
     AI *greenbot = new AI("green", green_gens);
     AI *redbot = new AI("red", red_gens);
 
@@ -327,27 +368,12 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
     {
         if (tick % 15 < 1)
         {
-            vector<pair<int, int>> green_ans = greenbot->process(cells, tentacles_ways, tick);
-            for (auto action : green_ans)
-            {
-                if (tentacles_ways[action.first][action.second])
-                {
-                    attack_next.push_back(make_pair(make_pair(action.first, action.second), distance(cells[action.first]->pos, cells[action.second]->pos) / 2));
-                    attack_next.push_back(make_pair(make_pair(action.first, action.first), distance(cells[action.first]->pos, cells[action.second]->pos) / 2));
-                    tentacles_ways[action.first][action.second] = 0;
-                    cells[action.first]->delete_tentacle(cells[action.second]);
-                }
-                else
-                {
 
-                    if (cells[action.first]->add_tentacle(cells[action.second]))
-                    {
-                        tentacles_ways[action.first][action.second] = 1;
-                    }
-                }
-            }
-            vector<pair<int, int>> red_ans = redbot->process(cells, tentacles_ways, tick);
-            for (auto action : red_ans)
+            vector<pair<int, int>> actions = greenbot->process(cells, tentacles_ways, tick);
+            for (auto c : redbot->process(cells, tentacles_ways, tick))
+                actions.push_back(c);
+            permutate(actions);
+            for (auto action : actions)
             {
                 if (tentacles_ways[action.first][action.second])
                 {
@@ -370,6 +396,7 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
             cell->update(attack_next);
         attack = attack_next;
         attack_next.clear();
+        permutate(attack);
         for (auto action : attack)
         {
             cells[action.first.second]->attack(cells[action.first.first]->owner, action.second, attack_next);
@@ -391,11 +418,11 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
             //cout << cell->score << endl;
         }
     }
-    score_lock.lock();
-    cout << green_score << ' ' << red_score << ' ' << time(nullptr) - start_time << ' ' << green_i << ' ' << red_i << endl;
+    //score_lock.lock();
+    print(green_score, red_score, time(nullptr) - start_time, green_i, red_i);
     score->at(green_i).first += green_score - red_score / 2;
     score->at(red_i).first += red_score - green_score / 2;
-    score_lock.unlock();
+    //score_lock.unlock();
 }
 
 void print(vector<vector<char>> &a)
@@ -422,14 +449,14 @@ int main()
     gen32.seed(time(nullptr));
     for (int i = 0; i < SIGNS_CELL; i++)
     {
-        for (int j = 0; j < GENES; j++)
+        for (int j = 0; j < GENES / 2; j++)
         {
             cell_action[i][j] = (char)(gen32() % 255 - 128);
         }
     }
     for (int i = 0; i < SIGNS_TENTACLE; i++)
     {
-        for (int j = 0; j < GENES; j++)
+        for (int j = 0; j < GENES / 2; j++)
         {
             tentacle_action[i][j] = (char)(gen32() % 255 - 128);
         }
@@ -445,21 +472,10 @@ int main()
         vector<pair<int, int>> score(POPULATION, make_pair(0, 0));
         for (int i = 0; i < POPULATION; i++)
             score[i].second = i;
-        vector <pair<int, int>> games;
-        for (int i = 0; i < POPULATION - 1; i++)
+        for (int i = 0; i < POPULATION; i++)
         {
-            for (int j = i + 1; j < POPULATION; j++)
-                games.push_back(make_pair(i, j));
-        }
-        for (int i = 0; i < games.size(); ){
-            thread thr1 = thread(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i++].second, &score);
-            if (i == games.size()){
-                thr1.join();
-                break;
-            }
-            thread thr2 = thread(game, gens[games[i].first], gens[games[i].second], games[i].first, games[i++].second, &score);
-            thr1.join();
-            thr2.join();
+            for (int j = 0; j < POPULATION; j++)
+                game(gens[i], gens[j], i, j, &score);
         }
         sort(score.begin(), score.end());
         reverse(score.begin(), score.end());
@@ -468,13 +484,14 @@ int main()
         cout << endl;
         for (auto c : gens)
             c->print();
-        for (int i = 0; i < POPULATION; i++){
+        for (int i = 0; i < POPULATION; i++)
+        {
             if (gen32() % 100 < CHANCE_MUTATION)
                 gens[i]->mutate();
         }
         for (int i = POPULATION - POPULATION / 3; i < POPULATION; i++)
         {
-            Chromosome* child = new Chromosome(gens[gen32() % POPULATION], gens[gen32() % POPULATION]);
+            Chromosome *child = new Chromosome(gens[gen32() % POPULATION], gens[gen32() % POPULATION]);
             delete gens[score[i].second];
             gens[score[i].second] = child;
         }
