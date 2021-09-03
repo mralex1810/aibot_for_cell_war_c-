@@ -1,23 +1,22 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <set>
 #include <algorithm>
 #include <math.h>
 #include <random>
 #include <ctime>
-#include <limits.h>
-#include <thread>
 #include <mutex>
 
 using namespace std;
 
-const int POPULATION = 21;
+const int POPULATION = 6;
 const int GENERATIONS = 100;
-const int GENES = 64;
+const int CELLS_GENES = 26;
+const int TENTACLE_GENES = 24;
+const int CONTROLLER_GENES = 18;
+const int GENES = CELLS_GENES + TENTACLE_GENES + CONTROLLER_GENES;
 const int CHANCE_MUTATION = 20;
-const int GEN_MUTATION = 60;
-const int CELLS_COUNT = 45;
+const int GEN_MUTATION = 50;
 const int SIGNS_CELL = 10;
 const int SIGNS_TENTACLE = 10;
 
@@ -25,11 +24,12 @@ mutex score_lock;
 mt19937 gen32;
 vector<vector<char>> cell_action(10, vector<char>(GENES));
 vector<vector<char>> tentacle_action(10, vector<char>(GENES));
-const vector<int> lvlscore = {0, 10, 25, 100, 250, 500, 990};
+const vector<int> ScoreToLvl ={0, 10, 25, 100, 250, 500, 990, 1000};
+const vector<int> ScoreToLvlGrayCell = {0, 5, 15, 50, 100, 200, 400, 410};
 
 int lvl_to_score(int score)
 {
-    return upper_bound(lvlscore.begin(), lvlscore.end(), score) - lvlscore.begin() - 1;
+    return upper_bound(ScoreToLvl.begin(), ScoreToLvl.end(), score) - ScoreToLvl.begin() - 1;
 }
 
 int distance(pair<int, int> pos1, pair<int, int> pos2)
@@ -39,47 +39,42 @@ int distance(pair<int, int> pos1, pair<int, int> pos2)
            10;
 }
 
-void permutate(vector<pair<int, int>> &a)
-{
-    for (int i = 0; i < a.size(); i++)
-        swap(a[gen32() % a.size()], a[gen32() % a.size()]);
-}
-
-void permutate(vector<pair<pair<int, int>, int>> &a)
-{
-    for (int i = 0; i < a.size(); i++)
-        swap(a[gen32() % a.size()], a[gen32() % a.size()]);
-}
 
 class Cell
 {
 public:
-    string owner;
+    int owner;
     int score;
     int lvl;
     int id;
     int counter;
+    int maxLvl;
     pair<int, int> pos;
     vector<Cell *> cells;
+    int tentaclesMax;
+    const int CounterController = 80;
 
-    Cell(string owner, int lvl, pair<int, int> pos, int &CELL_COUNTER)
+    Cell(int owner, int lvl, pair<int, int> pos, int &CELL_COUNTER)
     {
         this->owner = owner;
         this->lvl = lvl;
         this->pos = pos;
-        this->score = lvlscore[lvl];
+        this->score = ScoreToLvl[lvl];
+        maxLvl = lvl + 2;
         cells = {};
         counter = 0;
         id = CELL_COUNTER++;
+        tentaclesMax = lvl / 3 + 1;
+
     }
 
-    void attack(string attacker, int damage, vector<pair<pair<int, int>, int>> &attack_next)
+    void attack(int attacker, int damage, vector<pair<pair<int, int>, int>> &attack_next)
     {
         if (owner == attacker)
         {
-            if (score >= 1000)
+            if (score >= ScoreToLvl[maxLvl])
             {
-                counter += 20;
+                counter += damage * CounterController / max(1, (int)cells.size());
             }
             else
             {
@@ -90,48 +85,45 @@ public:
         else if (damage <= score)
         {
             score -= damage;
-            if (owner != "gray")
+            if (owner != 0)
                 lvl = lvl_to_score(score);
+            tentaclesMax = lvl / 3 + 1;
         }
         else
         {
-            for (auto cell : cells)
-            {
-                attack_next.push_back(make_pair(make_pair(id, cell->id), distance(pos, cell->pos)));
-            }
-            cells.clear();
-            if (owner == "gray")
-                score = lvlscore[lvl];
+            if (owner == 0)
+                score = ScoreToLvl[lvl];
             else
                 score = damage - score;
             owner = attacker;
             lvl = lvl_to_score(score);
+            tentaclesMax = lvl / 3 + 1;
+
         }
     }
     void update(vector<pair<pair<int, int>, int>> &attack_next)
     {
-        if (owner == "gray")
+        if (owner == 0)
         {
             return;
         }
-        int tmp = counter;
-        counter = tmp + lvl + 1;
-
-        if (counter >= 30)
+        counter += lvl + 1;
+        if (counter >= CounterController)
         {
             counter = 0;
-            if (score < 1000)
+            if (score < ScoreToLvl[maxLvl])
             {
                 score++;
             }
             else
             {
-                counter += 20;
+                counter += maxLvl * (CounterController / 10);
+                score = ScoreToLvl[maxLvl];
             }
             lvl = lvl_to_score(score);
             for (auto cell : cells)
             {
-                attack_next.push_back(make_pair(make_pair(id, cell->id), 1));
+                attack_next.push_back(make_pair(make_pair(id, cell->id), 1)); //TODO delay attack
             }
         }
     }
@@ -208,9 +200,9 @@ class AI
 {
 public:
     Chromosome *gens;
-    string owner;
+    int owner;
 
-    AI(string owner, Chromosome *gens)
+    AI(int owner, Chromosome *gens)
     {
         this->owner = owner;
         this->gens = gens;
@@ -230,7 +222,7 @@ public:
                 bool is_enemy = 0;
                 bool is_gray = 0;
                 bool is_friend = 0;
-                if (cell_end->owner == "gray")
+                if (cell_end->owner == 0)
                     is_gray = 1;
                 else if (cell_end->owner != cell_begin->owner)
                     is_enemy = 1;
@@ -279,6 +271,93 @@ public:
     }
 };
 
+class FieldProperties
+{
+    public:
+    vector<int> CellOfOwners;
+    vector<vector<int>> Lvl;
+    pair<int, int> Pos;
+
+    FieldProperties(pair<int, int> pos, vector<vector<int>> lvl, vector<int> cellOfOwners)
+    {
+        Pos = pos;
+        Lvl = lvl;
+        CellOfOwners = cellOfOwners;
+    }
+};
+
+bool IsCellDistant(pair<int, int> cellPos, vector<pair<int, int>> posList){
+    for(auto pos : posList){
+        if (distance(cellPos, pos) < 10){
+            return false;
+        }
+    }
+    return true;
+}
+
+FieldProperties MakeField(){
+    vector<int> maxCellsWithLvl = {0, 2, 6, 6, 5, 2, 1};
+    pair<int, int> pos;
+    vector<int> cellOfOwners(4);
+    vector <vector<int>> lvl(6);
+    vector <pair<int, int>> posList;
+    while (true)
+    {
+        int cells = 0;
+        lvl.clear();
+        vector<int> cellsWithLvl(7);
+        for (int i = 1; i < maxCellsWithLvl.size(); i++)
+        {
+            cellsWithLvl[i] = gen32() % maxCellsWithLvl[i] + 1;;
+            for (int j = cells; j < cells + cellsWithLvl[i]; j++) lvl[i].push_back(j);
+            cells += cellsWithLvl[i];
+        }
+        if (cells < 10) continue;
+        posList.clear();
+        int fails = 0;
+        for (int i = 0; i < cells; i++)
+        {
+            pair<int, int> newPos = {(gen32() % 1900) + 100, (gen32() % 900) + 100};
+            if (IsCellDistant(newPos, posList))
+            {
+                posList.push_back(newPos);
+                fails = 0;
+            }
+            else
+            {
+                fails++;
+                i--;
+                if (fails > 100) break;
+            }
+        }
+
+        if (fails > 100) continue;
+        cellOfOwners[0] = lvl[1][0];
+        cellOfOwners[1] = cellOfOwners[0] + cells;
+        cellOfOwners[2] = cellOfOwners[1] + cells;
+        cellOfOwners[3] = cellOfOwners[2] + cells;
+
+        for (var i = 0; i < cells; i++) posList.Add(new Vector3(-posList[i].x, -posList[i].y));
+        for (var i = 0; i < cells; i++) posList.Add(new Vector3(posList[i].x, -posList[i].y));
+        for (var i = 0; i < cells; i++) posList.Add(new Vector3(-posList[i].x, posList[i].y));
+
+        for (var i = 0; i < 6; i++)
+        {
+            var newLvlList = new List<int>();
+            for (var j = 0; j < 4; j++)
+                foreach (var id in lvl[i])
+            newLvlList.Add(id + j * cells);
+
+            lvl[i] = newLvlList.ToArray();
+        }
+
+        pos = posList.ToArray();
+        break;
+    }
+
+    return FieldProperties(pos, lvl, cellOfOwners);
+}
+
 void print(int a, int b, int c, int d, int e)
 {
     string sa = to_string(a), sb = to_string(b), sc = to_string(c), sd = to_string(d), se = to_string(e);
@@ -311,59 +390,59 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
     int CELL_COUNTER = 0;
     vector<Cell *> cells;
 
-    cells.push_back(new Cell("gray", 1, make_pair(100, 150), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 1, make_pair(100, 350), CELL_COUNTER));
-    cells.push_back(new Cell("green", 2, make_pair(100, 500), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 1, make_pair(100, 650), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 1, make_pair(100, 850), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(300, 100), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 2, make_pair(300, 300), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 2, make_pair(300, 500), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 2, make_pair(300, 700), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(300, 900), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(500, 150), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(500, 350), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(500, 500), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(500, 650), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(500, 850), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 5, make_pair(700, 100), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(700, 300), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(700, 500), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(700, 700), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 5, make_pair(700, 900), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 6, make_pair(950, 50), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 5, make_pair(950, 250), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(950, 500), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(950, 750), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(950, 950), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 5, make_pair(1200, 100), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(1200, 300), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(1200, 500), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(1200, 700), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 5, make_pair(1200, 900), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(1400, 150), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(1400, 350), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(1400, 500), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(1400, 650), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 4, make_pair(1400, 850), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(1600, 100), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 2, make_pair(1600, 300), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 2, make_pair(1600, 500), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 2, make_pair(1600, 700), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 3, make_pair(1600, 900), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 1, make_pair(1800, 150), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 1, make_pair(1800, 350), CELL_COUNTER));
-    cells.push_back(new Cell("red", 2, make_pair(1800, 500), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 1, make_pair(1800, 650), CELL_COUNTER));
-    cells.push_back(new Cell("gray", 1, make_pair(1800, 850), CELL_COUNTER));
+    cells.push_back(new Cell(0, 1, make_pair(100, 150), CELL_COUNTER));
+    cells.push_back(new Cell(0, 1, make_pair(100, 350), CELL_COUNTER));
+    cells.push_back(new Cell(1, 2, make_pair(100, 500), CELL_COUNTER));
+    cells.push_back(new Cell(0, 1, make_pair(100, 650), CELL_COUNTER));
+    cells.push_back(new Cell(0, 1, make_pair(100, 850), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(300, 100), CELL_COUNTER));
+    cells.push_back(new Cell(0, 2, make_pair(300, 300), CELL_COUNTER));
+    cells.push_back(new Cell(0, 2, make_pair(300, 500), CELL_COUNTER));
+    cells.push_back(new Cell(0, 2, make_pair(300, 700), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(300, 900), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(500, 150), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(500, 350), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(500, 500), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(500, 650), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(500, 850), CELL_COUNTER));
+    cells.push_back(new Cell(0, 5, make_pair(700, 100), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(700, 300), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(700, 500), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(700, 700), CELL_COUNTER));
+    cells.push_back(new Cell(0, 5, make_pair(700, 900), CELL_COUNTER));
+    cells.push_back(new Cell(0, 6, make_pair(950, 50), CELL_COUNTER));
+    cells.push_back(new Cell(0, 5, make_pair(950, 250), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(950, 500), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(950, 750), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(950, 950), CELL_COUNTER));
+    cells.push_back(new Cell(0, 5, make_pair(1200, 100), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(1200, 300), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(1200, 500), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(1200, 700), CELL_COUNTER));
+    cells.push_back(new Cell(0, 5, make_pair(1200, 900), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(1400, 150), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(1400, 350), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(1400, 500), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(1400, 650), CELL_COUNTER));
+    cells.push_back(new Cell(0, 4, make_pair(1400, 850), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(1600, 100), CELL_COUNTER));
+    cells.push_back(new Cell(0, 2, make_pair(1600, 300), CELL_COUNTER));
+    cells.push_back(new Cell(0, 2, make_pair(1600, 500), CELL_COUNTER));
+    cells.push_back(new Cell(0, 2, make_pair(1600, 700), CELL_COUNTER));
+    cells.push_back(new Cell(0, 3, make_pair(1600, 900), CELL_COUNTER));
+    cells.push_back(new Cell(0, 1, make_pair(1800, 150), CELL_COUNTER));
+    cells.push_back(new Cell(0, 1, make_pair(1800, 350), CELL_COUNTER));
+    cells.push_back(new Cell(2, 2, make_pair(1800, 500), CELL_COUNTER));
+    cells.push_back(new Cell(0, 1, make_pair(1800, 650), CELL_COUNTER));
+    cells.push_back(new Cell(0, 1, make_pair(1800, 850), CELL_COUNTER));
 
-    AI *greenbot = new AI("green", green_gens);
-    AI *redbot = new AI("red", red_gens);
+    AI *greenbot = new AI(1, green_gens);
+    AI *redbot = new AI(2, red_gens);
 
     vector<pair<pair<int, int>, int>> attack;
     vector<pair<pair<int, int>, int>> attack_next;
 
-    vector<vector<bool>> tentacles_ways(CELLS_COUNT, vector<bool>(CELLS_COUNT, false));
+    vector<vector<bool>> tentacles_ways(cells.size(), vector<bool>(cells.size(), false));
     for (int tick = 0; tick < 5000; tick++)
     {
         if (tick % 15 < 1)
@@ -372,7 +451,6 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
             vector<pair<int, int>> actions = greenbot->process(cells, tentacles_ways, tick);
             for (auto c : redbot->process(cells, tentacles_ways, tick))
                 actions.push_back(c);
-            permutate(actions);
             for (auto action : actions)
             {
                 if (tentacles_ways[action.first][action.second])
@@ -396,7 +474,6 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
             cell->update(attack_next);
         attack = attack_next;
         attack_next.clear();
-        permutate(attack);
         for (auto action : attack)
         {
             cells[action.first.second]->attack(cells[action.first.first]->owner, action.second, attack_next);
@@ -407,12 +484,12 @@ void game(Chromosome *green_gens, Chromosome *red_gens, int green_i, int red_i, 
     int red_score = 0;
     for (auto cell : cells)
     {
-        if (cell->owner == "green")
+        if (cell->owner == 1)
         {
             green_score += 500 + cell->score;
             //cout << cell->score << endl;
         }
-        else if (cell->owner == "red")
+        else if (cell->owner == 2)
         {
             red_score += 500 + cell->score;
             //cout << cell->score << endl;
@@ -445,7 +522,7 @@ void print(vector<vector<char>> &a)
 int main()
 {
 
-    freopen("D:/gen.txt", "w", stdout);
+    //freopen("gen.txt", "w", stdout);
     gen32.seed(time(nullptr));
     for (int i = 0; i < SIGNS_CELL; i++)
     {
